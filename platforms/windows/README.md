@@ -19,8 +19,7 @@ MiVibe Remote 的增量：
   - 语音快捷键仍可继续自定义；
 - Xiaomi 动作执行器复用上游已有的 `command` 动作能力；
 - 普通按键支持单击自定义，返回键和音量键保留上游长按重复；
-- 使用 WinSparkle 每 24 小时自动检查一次已签名更新，主窗口和托盘也可手动“检查更新”；
-- 主窗口和托盘提供“关于 MiVibe Remote”，可查看作者联系方式、复制微信号并检查更新；
+- 定制版主窗口和托盘提供简洁的“关于 MiVibe Remote”说明，不启用在线更新入口；
 - 主窗口改为状态控制台，新增只读环境检查：分别检查配置、VB-CABLE 两个端点、后台桥接、修复脚本和遥控器识别，并给出对应修复动作；
 - 新增应用内使用教程，覆盖首次安装、预设、触发方式和真实文本框测试；
 - 安装路径和开始菜单分组不再使用上游商业品牌。
@@ -37,8 +36,6 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m unittest discover -s tests -v
-$env:MIVIBE_APPCAST_URL = "https://updates.example.com/windows-appcast.xml"
-$env:MIVIBE_UPDATE_ED25519_PUBLIC_KEY = "<base64-encoded-32-byte-public-key>"
 .\delivery\build-standalone-packages.ps1 -Version 0.1.21 -Product xiaomi -AllowUnsignedCandidate
 ```
 
@@ -47,22 +44,13 @@ $env:MIVIBE_UPDATE_ED25519_PUBLIC_KEY = "<base64-encoded-32-byte-public-key>"
 保留的其他上游独立产品，但它们不属于 MiVibe Remote 交付物。
 构建同时生成对应的 `.exe.sha256` 校验文件。
 
-两个更新变量必须同时提供。构建脚本只会把 HTTPS appcast 地址和公开 Ed25519
-验签公钥写入生成资源；若两者均未提供，安装包仍能构建和运行，但在线更新会安全禁用。
-任何更新签名私钥、GitHub Token 或会员凭证都不得传给此构建脚本或写入安装包。
-
-Windows appcast 的安装包 enclosure 应标记 `sparkle:os="windows-x64"`，携带
-`sparkle:edSignature`，并使用以下安装参数：
-
-```text
-/SILENT /SP- /NOICONS /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /UPDATED
-```
-
-`/UPDATED` 让固定 AppId 的 Inno Setup 执行原位覆盖升级、保留用户此前选择的任务，
-跳过首次安装的 VB-CABLE 检查，并在更新完成后重新启动 MiVibe Remote。签名私钥只在
-隔离的发布环境中用于签署最终安装包；客户端只持有公钥。
+当前定制界面不启动在线更新检查；更新需要重新构建并安装。任何更新签名私钥、GitHub Token
+或会员凭证都不得写入安装包。
 
 构建会校验并获取 Frida Gadget 和固定版本 WinSparkle。VB-CABLE 不嵌入安装包；用户从 MiVibe 主窗口主动
 打开语音驱动助手后，助手从 VB-Audio 官方地址下载、校验并启动官方安装程序。
 上游说明见 [UPSTREAM_README.md](UPSTREAM_README.md)，来源与许可证见仓库根目录
 `UPSTREAM.md`、本目录 `THIRD_PARTY_NOTICES.md` 和 `LICENSE`。
+
+本次 Windows 遥控器、虚拟麦克风和 Codex 的实际验证与排查记录见
+[Windows 适配与验证](../../docs/windows-remote-validation.md)。

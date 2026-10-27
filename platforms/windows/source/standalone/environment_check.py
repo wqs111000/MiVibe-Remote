@@ -56,6 +56,14 @@ def _read_recent_log(path: Path, limit: int = 256_000) -> str:
         return ""
 
 
+def voice_bridge_is_ready(log: str, worker_status: Mapping[str, object]) -> bool:
+    if not (worker_status.get("bridge_alive") and worker_status.get("audio_alive")):
+        return False
+    ready_position = log.rfind("READY remote=")
+    last_failure = max(log.rfind("BRIDGE ERROR"), log.rfind("VOICE BRIDGE WAITING"), log.rfind("CONNECTING remote="))
+    return ready_position >= 0 and ready_position > last_failure
+
+
 def evaluate_environment(
     *,
     app_dir: Path,
@@ -143,9 +151,20 @@ def evaluate_environment(
     results.append(EnvironmentCheckItem(
         key="remote",
         title="遥控器识别",
-        status="pass" if remote_ready else "warn",
-        detail="日志中已识别小米蓝牙遥控器 2" if remote_ready else "暂未在最近日志中看到遥控器就绪记录",
-        action="确认系统蓝牙已连接遥控器，然后按一次方向键并刷新检查。" if not remote_ready else "",
+        status="pass" if remote_ready and bridge_alive else "warn",
+        detail="已检测到遥控器连接或按键记录" if remote_ready and bridge_alive else "当前桥接未运行或尚未检测到遥控器",
+        action="确认系统蓝牙已连接遥控器，然后重启桥接并刷新检查。" if not (remote_ready and bridge_alive) else "",
+    ))
+
+    # Connection or HID-tap activity alone does not mean that microphone
+    # streaming is ready. Only a later READY after a failure is useful here.
+    voice_ready = voice_bridge_is_ready(bridge_log, worker_status)
+    results.append(EnvironmentCheckItem(
+        key="voice_bridge",
+        title="遥控器语音链路",
+        status="pass" if voice_ready else "warn",
+        detail="语音通道和音频路由已就绪；仍需按住语音键验证录音" if voice_ready else "尚未确认语音通道与音频路由同时就绪",
+        action="先修复 VB-CABLE 并重启桥接，再按住语音键进行真实录音测试。" if not voice_ready else "",
     ))
 
     return results

@@ -26,7 +26,7 @@ class EnvironmentCheckTests(unittest.TestCase):
         logs = root / "logs"
         logs.mkdir()
         (logs / "bridge.log").write_text(
-            "XIAOMI HID TAP READY pid=1234", encoding="utf-8"
+            "XIAOMI HID TAP READY pid=1234\nREADY remote=MI RC audio_router=127.0.0.1", encoding="utf-8"
         )
         return temporary, root, config, logs
 
@@ -50,6 +50,7 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertEqual(by_key["vb_cable"].status, "pass")
         self.assertEqual(by_key["workers"].status, "pass")
         self.assertEqual(by_key["remote"].status, "pass")
+        self.assertEqual(by_key["voice_bridge"].status, "pass")
         self.assertFalse([item for item in results if item.status == "fail"])
 
     def test_missing_capture_endpoint_produces_actionable_failure(self) -> None:
@@ -71,6 +72,36 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertEqual(cable.status, "fail")
         self.assertIn("CABLE Output", cable.detail)
         self.assertIn("安装/修复语音驱动", cable.action)
+
+    def test_connection_does_not_imply_voice_ready_after_router_failure(self) -> None:
+        temporary, root, config, logs = self._fixture()
+        self.addCleanup(temporary.cleanup)
+        (logs / "bridge.log").write_text(
+            "READY remote=old\nCONNECTED remote=new\nATVV DISCOVERED\n"
+            "BRIDGE ERROR TimeoutError: central audio router did not become ready\n",
+            encoding="utf-8",
+        )
+        results = evaluate_environment(
+            app_dir=root, config_path=config, log_dir=logs,
+            worker_status={"bridge_alive": True, "audio_alive": False},
+            audio_devices=[], platform_name="Windows", platform_release="11",
+        )
+        by_key = {item.key: item for item in results}
+        self.assertEqual(by_key["remote"].status, "pass")
+        self.assertEqual(by_key["voice_bridge"].status, "warn")
+        self.assertEqual(by_key["vb_cable"].status, "fail")
+
+    def test_stopped_bridge_cannot_use_old_success_log(self) -> None:
+        temporary, root, config, logs = self._fixture()
+        self.addCleanup(temporary.cleanup)
+        results = evaluate_environment(
+            app_dir=root, config_path=config, log_dir=logs,
+            worker_status={"bridge_alive": False, "audio_alive": True},
+            audio_devices=[], platform_name="Windows", platform_release="11",
+        )
+        by_key = {item.key: item for item in results}
+        self.assertEqual(by_key["remote"].status, "warn")
+        self.assertEqual(by_key["voice_bridge"].status, "warn")
 
 
 if __name__ == "__main__":

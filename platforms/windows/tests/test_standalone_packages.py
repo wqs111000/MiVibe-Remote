@@ -34,18 +34,12 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertNotIn("from bridges.t1", text)
         self.assertNotIn("from bridges.hanvon", text)
 
-    def test_xiaomi_host_exposes_and_cleans_up_online_updates(self) -> None:
+    def test_xiaomi_fork_does_not_invoke_upstream_online_updates(self) -> None:
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
-        self.assertIn("WinSparkleUpdater", text)
-        self.assertIn('("检查更新", self.check_updates)', text)
-        self.assertIn('pystray.MenuItem("检查更新"', text)
-        self.assertIn("self.root.after(1500, self._start_updater)", text)
+        self.assertNotIn('("检查更新", self.check_updates)', text)
+        self.assertNotIn('pystray.MenuItem("检查更新"', text)
+        self.assertNotIn("self.root.after(1500, self._start_updater)", text)
         self.assertIn("self.updater.cleanup()", text)
-        self.assertIn("self._request_update_shutdown", text)
-        self.assertIn("MainThreadShutdownBridge", text)
-        self.assertIn("self._update_shutdown.request_and_wait()", text)
-        self.assertIn("self._update_shutdown.dispatch_one(", text)
-        self.assertIn("if not for_update:", text)
 
     def test_xiaomi_host_exposes_environment_check_and_in_app_guide(self) -> None:
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")

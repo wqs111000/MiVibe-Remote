@@ -40,9 +40,9 @@ import pystray
 
 from runtime_launcher import role_command
 from bridges.xiaomi.xiaomi_config import APPDATA, CONFIG_PATH, load_config
-from standalone.about_info import AUTHOR_LINE
-from standalone.about_window import AboutWindow
-from standalone.environment_check import EnvironmentCheckWindow, run_environment_check
+from standalone.environment_check import (
+    EnvironmentCheckWindow, _read_recent_log, run_environment_check, voice_bridge_is_ready,
+)
 from standalone.windows_update import MainThreadShutdownBridge, WinSparkleUpdater
 
 
@@ -218,13 +218,6 @@ class XiaomiApp:
             self._request_update_shutdown,
             self._can_install_update,
         )
-        self.about = AboutWindow(
-            self.root,
-            APP_NAME,
-            APP_VERSION,
-            self.check_updates,
-            log,
-        )
         self.environment_check = EnvironmentCheckWindow(
             self.root,
             check_provider=self._collect_environment_check,
@@ -243,7 +236,6 @@ class XiaomiApp:
             self.detail_var.set("点击“打开日志”查看原因；窗口会保留，不会静默退出。")
         if minimized:
             self.root.withdraw()
-        self.root.after(1500, self._start_updater)
         self.root.after(800, self._poll)
 
     def _build_ui(self) -> None:
@@ -266,7 +258,7 @@ class XiaomiApp:
         ).pack(anchor="w")
         tk.Label(
             title_block,
-            text=f"小米蓝牙遥控器 2 · Windows 工作流控制台 · v{APP_VERSION}",
+            text=f"遥控器语音与快捷操作 · Windows · v{APP_VERSION}",
             bg=navy,
             fg="#aebbd0",
             font=("Microsoft YaHei UI", 9),
@@ -306,16 +298,6 @@ class XiaomiApp:
             fg=muted,
             font=("Microsoft YaHei UI", 9, "bold"),
         ).pack(side="left")
-        author_link = tk.Label(
-            status_title,
-            text=AUTHOR_LINE,
-            bg="white",
-            fg=blue,
-            cursor="hand2",
-            font=("Microsoft YaHei UI", 9),
-        )
-        author_link.pack(side="right")
-        author_link.bind("<Button-1>", lambda _event: self.show_about())
         tk.Label(
             status_card,
             textvariable=self.status_var,
@@ -386,7 +368,6 @@ class XiaomiApp:
             ("重启桥接", self.restart_workers),
             ("安装/修复语音驱动", self.repair_audio),
             ("使用教程", self.show_guide),
-            ("检查更新", self.check_updates),
             ("打开日志", self.open_logs),
         ):
             tk.Button(
@@ -441,7 +422,6 @@ class XiaomiApp:
             pystray.MenuItem("按键与语音设置", lambda *_: self.root.after(0, self.open_settings)),
             pystray.MenuItem("环境检查", lambda *_: self.root.after(0, self.show_environment_check)),
             pystray.MenuItem("使用教程", lambda *_: self.root.after(0, self.show_guide)),
-            pystray.MenuItem("检查更新", lambda *_: self.root.after(0, self.check_updates)),
             pystray.MenuItem("重启桥接", lambda *_: self.root.after(0, self.workers.restart_bridge)),
             pystray.MenuItem(
                 "关于 MiVibe Remote",
@@ -602,7 +582,12 @@ class XiaomiApp:
             )
 
     def show_about(self) -> None:
-        self.about.show()
+        messagebox.showinfo(
+            "关于 MiVibe Remote",
+            f"MiVibe Remote {APP_VERSION}\n\n"
+            "使用遥控器语音和按键操作 Codex。\n"
+            "许可证和第三方组件说明位于安装目录。",
+        )
 
     def show_guide(self) -> None:
         if self.guide_window is not None and self.guide_window.winfo_exists():
@@ -742,6 +727,10 @@ class XiaomiApp:
 
         def run_repair() -> None:
             try:
+                # The bundled application can inherit a PowerShell 7 module
+                # path; let Windows PowerShell build its own compatible path.
+                repair_environment = os.environ.copy()
+                repair_environment.pop("PSModulePath", None)
                 result = subprocess.run(
                     [
                         "powershell.exe",
@@ -757,16 +746,28 @@ class XiaomiApp:
                     ],
                     cwd=str(script.parent),
                     creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    env=repair_environment,
+                    capture_output=True,
                     check=False,
                 )
-                log(f"audio repair exited code={result.returncode}")
+                details = (result.stdout + b"\n" + result.stderr).decode("utf-8", errors="replace").strip()
+                log(f"audio repair exited code={result.returncode}: {details}")
+                if result.returncode:
+                    self.root.after(0, lambda: self._audio_repair_failed())
+                else:
+                    self.root.after(0, self.restart_workers)
             except Exception as exc:
                 log(f"audio repair failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+                self.root.after(0, lambda: self._audio_repair_failed())
             finally:
                 self._audio_repair_running = False
-                self.root.after(0, self.restart_workers)
 
         threading.Thread(target=run_repair, name="xiaomi-audio-repair", daemon=True).start()
+
+    def _audio_repair_failed(self) -> None:
+        self.status_var.set("语音驱动安装未完成")
+        self.detail_var.set("请查看日志中的 audio repair 错误，再重试安装。")
+        messagebox.showerror("MiVibe Remote", "语音驱动安装未完成，请打开日志查看原因。")
 
     def show(self) -> None:
         self.root.deiconify()
@@ -783,10 +784,14 @@ class XiaomiApp:
             return
 
         status = self.workers.status()
-        if status["bridge_alive"] and status["audio_alive"]:
-            text = "按键桥接和小米语音均已运行"
-            detail = "遥控器已配对后即可使用；首次完整按键接管可能出现一次 Windows 管理员确认。"
+        if voice_bridge_is_ready(_read_recent_log(LOG_DIR / "bridge.log"), status):
+            text = "遥控器语音链路已就绪"
+            detail = "按住语音键测试实际听写；首次完整按键接管可能出现一次 Windows 管理员确认。"
             color = "#2fa84f"
+        elif status["bridge_alive"] and status["audio_alive"]:
+            text = "正在连接遥控器语音"
+            detail = "后台进程已启动，等待语音链路就绪；如持续等待，请查看日志。"
+            color = "#d99500"
         elif status["bridge_alive"]:
             text = "普通按键已运行，语音环境未就绪"
             detail = "小米语音依赖 VB-CABLE。请从开始菜单运行“小米语音环境检查与修复”。"

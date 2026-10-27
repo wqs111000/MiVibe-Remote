@@ -161,8 +161,8 @@ class AboutWindowTests(unittest.TestCase):
         spec = (SOURCE / "XiaomiRemoteBridge.spec").read_text(encoding="utf-8")
         self.assertIn('text="关于"', host)
         self.assertIn('"关于 MiVibe Remote"', host)
-        self.assertIn("AUTHOR_LINE", host)
-        self.assertIn("self.about.show()", host)
+        self.assertNotIn("AUTHOR_LINE", host)
+        self.assertNotIn("self.about.show()", host)
         self.assertIn('text="检查更新"', about)
         self.assertIn('text="复制微信号"', about)
         self.assertIn('text="查看大图"', about)
@@ -171,10 +171,8 @@ class AboutWindowTests(unittest.TestCase):
         self.assertIn("detail_button.bind(", about)
         self.assertIn("self.photos.append(photo)", about)
         self.assertIn("self.detail_photo = photo", about)
-        self.assertIn("AuthorDouyin.jpg", spec)
-        self.assertIn("AuthorXiaohongshu.jpg", spec)
-        self.assertIn('(str(author_douyin), "about")', spec)
-        self.assertIn('(str(author_xiaohongshu), "about")', spec)
+        self.assertNotIn("AuthorDouyin.jpg", spec)
+        self.assertNotIn("AuthorXiaohongshu.jpg", spec)
 
 
 if __name__ == "__main__":

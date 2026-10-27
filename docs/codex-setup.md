@@ -31,17 +31,20 @@ MiVibe Remote 会把 RC003 语音键的按下与松开同步为 Codex 的
 
 ## Windows
 
-1. 安装 MiVibe Remote Windows 包；首次安装会从 VB-Audio 官方地址下载并配置 VB-CABLE。
+1. 安装并运行 MiVibe Remote。在主窗口打开语音驱动助手，按提示运行 VB-Audio 官方
+   VB-CABLE 安装器；如果安装器要求重启，保存工作后手动重启 Windows。
 2. 在 Codex 的“设置 → 语音”中选择 `CABLE Output` 作为麦克风输入。
-3. 在 Codex 的“设置 → 键盘快捷键”中，把“按住听写快捷键”设为右 Alt。
+3. 在 Codex 的“设置 → 键盘快捷键”中设置“按住听写快捷键”，默认方案使用右 Alt。
 4. 在 MiVibe Remote 设置中：
    - 全新安装无需切换预设；如果之前改过按键，点击“Codex 预设”恢复；
    - 确认语音键为右 Alt；
    - 触发方式选择“按住型”；
    - 保存并应用。
 
-Windows 桥会在 RC003 语音会话期间持续按住右 Alt，并把 ATVV 音频解码、重采样后写入
-VB-CABLE。
+Windows 桥会在语音会话期间持续按住所配置的快捷键，并把 ATVV 音频解码、重采样后写入
+VB-CABLE。如果右 Alt 被 Typeless 等程序占用，可在 MiVibe Remote 和 Codex 两处改成相同的
+空闲组合键；本次实际验证使用了 `Ctrl + Shift + F9`。更改后保存并应用，并确认没有其他程序占用。
+完整验证记录和故障排查见 [Windows 适配与验证](windows-remote-validation.md)。
 
 ## 默认 Codex 按键
 

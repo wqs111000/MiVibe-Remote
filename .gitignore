@@ -11,6 +11,8 @@ dist/
 __pycache__/
 *.py[cod]
 .venv/
+.venv-probe/
+.venv-device-probe/
 build/
 *.spec.bak
 
@@ -22,3 +24,4 @@ config.json
 keys_config.json
 mivibe-update-private*
 .update-signing/
+.venv-ui312/
