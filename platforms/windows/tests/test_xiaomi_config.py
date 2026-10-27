@@ -21,15 +21,41 @@ from bridges.xiaomi.xiaomi_config import (  # noqa: E402
 
 
 class XiaomiConfigTests(unittest.TestCase):
+    def test_only_original_codex_power_launcher_is_migrated(self) -> None:
+        prefix = ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"]
+        for command in (xiaomi_config.CODEX_START_COMMAND,
+                        xiaomi_config.CODEX_START_COMMAND[xiaomi_config.CODEX_START_COMMAND.index("$app = Get-StartApps"):]):
+            with self.subTest(command=command[:20]), tempfile.TemporaryDirectory() as temp_dir:
+                path = Path(temp_dir) / "xiaomi_keys.json"
+                data = default_keys_config()
+                old = [{"type": "command", "args": prefix + [command], "label": "打开 Codex"}]
+                data["button_bindings"]["power"] = old
+                data["button_bindings"]["menu"] = [{"type": "hotkey", "keys": ["leftwin", "tab"]}]
+                data["preset_bindings"]["codex"]["power"] = old
+                path.write_text(json.dumps(data), encoding="utf-8")
+                loaded = xiaomi_config.load_keys_config(path)
+                self.assertEqual(loaded["button_bindings"]["power"][0]["type"], "open_codex")
+                self.assertEqual(loaded["preset_bindings"]["codex"]["power"][0]["type"], "open_codex")
+                self.assertEqual(loaded["button_bindings"]["menu"][0]["keys"], ["leftwin", "tab"])
+
+    def test_customized_codex_power_command_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "xiaomi_keys.json"
+            data = default_keys_config()
+            custom = [{"type": "command", "args": ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "Write-Output custom"]}]
+            data["button_bindings"]["power"] = custom
+            data["preset_bindings"]["codex"]["power"] = custom
+            path.write_text(json.dumps(data), encoding="utf-8")
+            loaded = xiaomi_config.load_keys_config(path)
+            self.assertEqual(loaded["button_bindings"]["power"], custom)
+            self.assertEqual(loaded["preset_bindings"]["codex"]["power"], custom)
+
     def test_codex_preset_opens_codex_and_keeps_send_navigation(self) -> None:
         bindings = xiaomi_config.codex_button_bindings()
 
-        self.assertEqual(bindings["power"][0]["type"], "command")
+        self.assertEqual(bindings["power"][0]["type"], "open_codex")
         self.assertEqual(bindings["power"][0]["label"], "打开 Codex")
-        command = bindings["power"][0]["args"][-1]
-        self.assertIn("Get-StartApps", command)
-        self.assertIn("'Codex', 'ChatGPT'", command)
-        self.assertIn("Start-Process 'codex:'", command)
+        self.assertNotIn("args", bindings["power"][0])
         self.assertEqual(bindings["ok"][0]["keys"], ["enter"])
         self.assertEqual(bindings["up"][0]["keys"], ["up"])
         self.assertEqual(bindings["down"][0]["keys"], ["down"])
@@ -39,7 +65,7 @@ class XiaomiConfigTests(unittest.TestCase):
         self.assertEqual(xiaomi_config.CODEX_VOICE_TRIGGER_MODE, "hold")
         self.assertEqual(default_config()["voice_trigger_mode"], "hold")
         self.assertEqual(default_config()["active_preset"], "codex")
-        self.assertEqual(default_keys_config()["button_bindings"]["power"][0]["type"], "command")
+        self.assertEqual(default_keys_config()["button_bindings"]["power"][0]["type"], "open_codex")
         self.assertEqual(
             default_keys_config()["button_bindings"]["power"][0]["label"],
             "打开 Codex",

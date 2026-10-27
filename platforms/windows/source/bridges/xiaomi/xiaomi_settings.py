@@ -15,6 +15,9 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 import uuid
 
+from PIL import ImageTk
+from standalone.brand_icon import make_icon
+
 from .xiaomi_config import (
     APP_VERSION,
     BUTTONS,
@@ -229,7 +232,7 @@ def format_action(actions) -> str:
         return format_keys([str(action.get("key", ""))])
     if action_type == "text":
         return f"输入文本：{action.get('text', '')}"
-    if action_type == "command":
+    if action_type in {"command", "open_codex"}:
         return str(action.get("label") or "启动程序")
     if action_type == "preset_cycle":
         return "循环切换预设"
@@ -643,8 +646,11 @@ class XiaomiSettingsWindow:
         root: tk.Tk,
         hub_port: int,
         instance_socket: socket.socket | None = None,
+        container: tk.Frame | None = None,
     ):
         self.root = root
+        self.container = container if container is not None else root
+        self.embedded = container is not None
         self.hub_port = hub_port
         self.instance_socket = instance_socket
         self.instance_stop = threading.Event()
@@ -724,8 +730,9 @@ class XiaomiSettingsWindow:
         self.add_preset_button: ttk.Button | None = None
         self._build()
         self.select_button(self.selected_id)
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self._start_instance_listener()
+        if not self.embedded:
+            self.root.protocol("WM_DELETE_WINDOW", self.close)
+            self._start_instance_listener()
 
     def _start_instance_listener(self) -> None:
         if self.instance_socket is None:
@@ -765,14 +772,17 @@ class XiaomiSettingsWindow:
             pass
 
     def _build(self) -> None:
-        self.root.title(f"{APP_NAME} v{APP_VERSION}")
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        initial_width = max(900, min(1180, screen_width - 64))
-        initial_height = max(660, min(860, screen_height - 96))
-        self.root.geometry(f"{initial_width}x{initial_height}")
-        self.root.minsize(min(900, initial_width), min(620, initial_height))
-        self.root.configure(bg=BG)
+        if not self.embedded:
+            self.root.title(f"{APP_NAME} v{APP_VERSION}")
+            self._window_icon = ImageTk.PhotoImage(make_icon(64), master=self.root)
+            self.root.iconphoto(True, self._window_icon)
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            initial_width = max(900, min(1180, screen_width - 64))
+            initial_height = max(660, min(860, screen_height - 96))
+            self.root.geometry(f"{initial_width}x{initial_height}")
+            self.root.minsize(min(900, initial_width), min(620, initial_height))
+            self.root.configure(bg=BG)
 
         style = ttk.Style(self.root)
         try:
@@ -849,18 +859,22 @@ class XiaomiSettingsWindow:
         )
         style.configure("TEntry", padding=(8, 8), fieldbackground="#ffffff")
         style.configure("TCombobox", padding=(7, 6))
+        if self.embedded:
+            self._build_compact()
+            return
 
-        # High-DPI Windows machines often have fewer than 900 logical vertical
-        # pixels. Keep the footer at its natural height and scroll the complete
-        # page instead of letting Tk clip its buttons into thin strips.
+        # Keep save and preset controls visible while the settings page scrolls.
+        footer = tk.Frame(self.container, bg=CARD, highlightbackground=BORDER,
+                          highlightthickness=1, padx=18, pady=8)
+        footer.pack(side="bottom", fill="x")
         page = tk.Canvas(
-            self.root,
+            self.container,
             bg=BG,
             highlightthickness=0,
             bd=0,
             yscrollincrement=24,
         )
-        page_scroll = ttk.Scrollbar(self.root, orient="vertical", command=page.yview)
+        page_scroll = ttk.Scrollbar(self.container, orient="vertical", command=page.yview)
         page.configure(yscrollcommand=page_scroll.set)
         page_scroll.pack(side="right", fill="y")
         page.pack(side="left", fill="both", expand=True)
@@ -875,7 +889,7 @@ class XiaomiSettingsWindow:
             page.itemconfigure(page_window, width=event.width)
 
         def scroll_page(event) -> None:
-            if page.bbox("all") and outer.winfo_reqheight() > page.winfo_height():
+            if self.container.winfo_ismapped() and page.bbox("all") and outer.winfo_reqheight() > page.winfo_height():
                 page.yview_scroll(-int(event.delta / 120), "units")
 
         outer.bind("<Configure>", update_scroll_region)
@@ -883,7 +897,8 @@ class XiaomiSettingsWindow:
         self.root.bind("<MouseWheel>", scroll_page, add="+")
 
         header = tk.Frame(outer, bg=NAVY, padx=24, pady=18)
-        header.pack(fill="x", pady=(0, 14))
+        if not self.embedded:
+            header.pack(fill="x", pady=(0, 14))
         brand_mark = tk.Label(
             header,
             text="M",
@@ -912,6 +927,8 @@ class XiaomiSettingsWindow:
         ).pack(anchor="w", pady=(4, 0))
         header_meta = tk.Frame(header, bg=NAVY)
         header_meta.pack(side="right", anchor="center")
+        ttk.Button(header_meta, text="跳到语音设置", style="Quiet.TButton",
+                   command=lambda: jump_to_voice()).pack(side="right", padx=(16, 0))
         tk.Label(
             header_meta,
             text="当前模式",
@@ -1173,6 +1190,15 @@ class XiaomiSettingsWindow:
             pady=12,
         )
         voice_row.pack(fill="x", pady=(10, 0))
+        self.page = page
+
+        def jump_to_voice() -> None:
+            self.root.update_idletasks()
+            height = max(outer.winfo_reqheight(), 1)
+            offset = voice_row.winfo_rooty() - outer.winfo_rooty()
+            page.yview_moveto(max(0.0, min(1.0, (offset - 100) / height)))
+
+        self.jump_to_voice = jump_to_voice
         ttk.Checkbutton(
             voice_row,
             text="启用语音快捷键",
@@ -1207,6 +1233,8 @@ class XiaomiSettingsWindow:
             pady=10,
         )
         self.voice_help_label.pack(fill="x", pady=(10, 0))
+        ttk.Button(right_card, text="修改语音快捷键", style="Quiet.TButton",
+                   command=self.edit_voice_shortcut).pack(anchor="w", pady=(8, 0))
         tk.Label(
             voice_row,
             text="增益 dB",
@@ -1216,17 +1244,8 @@ class XiaomiSettingsWindow:
         ).pack(side="left", padx=(20, 6))
         ttk.Entry(voice_row, textvariable=self.gain_db, width=7).pack(side="left")
 
-        footer = tk.Frame(
-            outer,
-            bg=CARD,
-            highlightbackground=BORDER,
-            highlightthickness=1,
-            padx=18,
-            pady=13,
-        )
-        footer.pack(fill="x", pady=(12, 0))
         preset_area = tk.Frame(footer, bg=CARD)
-        preset_area.pack(side="left")
+        preset_area.pack(fill="x")
         self.preset_area = preset_area
         tk.Label(
             preset_area,
@@ -1261,13 +1280,16 @@ class XiaomiSettingsWindow:
         )
         self.add_preset_button.pack(side="left", padx=(0, 7))
         action_area = tk.Frame(footer, bg=CARD)
-        action_area.pack(side="right")
-        ttk.Button(
-            action_area,
-            text="关闭",
-            command=self.close,
-            style="Quiet.TButton",
-        ).pack(side="right")
+        action_area.pack(fill="x", pady=(6, 0))
+        tk.Label(action_area, textvariable=self.save_status_var, bg=CARD, fg=MUTED,
+                 font=("Microsoft YaHei UI", 8)).pack(side="left")
+        if not self.embedded:
+            ttk.Button(
+                action_area,
+                text="关闭",
+                command=self.close,
+                style="Quiet.TButton",
+            ).pack(side="right")
         ttk.Button(
             action_area,
             text="保存并应用",
@@ -1281,25 +1303,105 @@ class XiaomiSettingsWindow:
             style="Quiet.TButton",
         ).pack(side="right", padx=(0, 9))
 
-        status_bar = tk.Frame(outer, bg=BG)
-        status_bar.pack(fill="x", pady=(7, 0))
-        tk.Label(
-            status_bar,
-            text="●",
-            bg=BG,
-            fg=SUCCESS,
-            font=("Segoe UI", 8),
-        ).pack(side="left")
-        tk.Label(
-            status_bar,
-            textvariable=self.save_status_var,
-            bg=BG,
-            fg=MUTED,
-            font=("Microsoft YaHei UI", 8),
-        ).pack(side="left", padx=(5, 0))
-
         self._refresh_preset_styles()
         self.draw_remote()
+
+    def _build_compact(self) -> None:
+        """A single fixed page; the standalone legacy window remains scrollable."""
+        self.voice_shortcut_var = tk.StringVar()
+        style = ttk.Style(self.root)
+        style.configure("Compact.TButton", padding=(7, 4), font=("Microsoft YaHei UI", 9))
+        style.configure("Preset.TButton", padding=(7, 5), font=("Microsoft YaHei UI", 9, "bold"))
+        style.configure("PresetActive.TButton", padding=(7, 5), font=("Microsoft YaHei UI", 9, "bold"))
+        outer = tk.Frame(self.container, bg=BG, padx=14, pady=10)
+        outer.pack(fill="both", expand=True)
+        footer = tk.Frame(outer, bg=BG)
+        footer.pack(side="bottom", fill="x", pady=(8, 0))
+        body = tk.Frame(outer, bg=BG)
+        body.pack(fill="both", expand=True)
+        left = tk.Frame(body, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        tk.Label(left, text="选择遥控器按键", bg=CARD, fg=TEXT, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w", padx=12, pady=(10, 0))
+        tk.Label(left, textvariable=self.photo_hint_var, bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 8)).pack(anchor="w", padx=12)
+        self.canvas = tk.Canvas(left, width=360, height=530, bg="#fbfcfe", highlightthickness=0, cursor="hand2")
+        self.canvas.pack(padx=4, pady=3)
+        self.canvas.bind("<Button-1>", self._canvas_click)
+        self.canvas.bind("<Motion>", self._canvas_motion)
+        self.canvas.bind("<Leave>", self._canvas_leave)
+
+        right = tk.Frame(body, bg=CARD, padx=16, pady=10, highlightbackground=BORDER, highlightthickness=1)
+        right.pack(side="left", fill="both", expand=True)
+        heading = tk.Frame(right, bg=CARD)
+        heading.pack(fill="x")
+        tk.Label(heading, text="按键映射", bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 9)).pack(side="left")
+        tk.Label(heading, textvariable=self.selected_label_var, bg=CARD, fg=TEXT, font=("Microsoft YaHei UI", 12, "bold")).pack(side="left", padx=12)
+        mapping = tk.Frame(right, bg=SOFT_BLUE, padx=10, pady=7)
+        mapping.pack(fill="x", pady=(6, 0))
+        tk.Label(mapping, text="当前 / 待应用", bg=SOFT_BLUE, fg=BLUE_DARK, font=("Microsoft YaHei UI", 8)).pack(anchor="w")
+        tk.Label(mapping, textvariable=self.result_mapping_var, bg=SOFT_BLUE, fg=TEXT, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w")
+        self.capture_button = ttk.Button(right, text="按真实键盘录入", command=self.toggle_capture, style="Primary.TButton")
+        self.capture_button.pack(fill="x", pady=(6, 0))
+        tk.Label(right, textvariable=self.capture_status_var, bg=CARD, fg=MUTED, font=("Microsoft YaHei UI", 8)).pack(anchor="w", pady=(3, 0))
+        manual = tk.Frame(right, bg=CARD)
+        manual.pack(fill="x", pady=(5, 0))
+        self.manual_entry = ttk.Entry(manual, textvariable=self.manual_var)
+        self.manual_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(manual, text="手动应用", command=self.apply_manual, style="Compact.TButton").pack(side="left", padx=(6, 0))
+        buttons = tk.Frame(right, bg=CARD)
+        buttons.pack(fill="x", pady=(6, 0))
+        for text, action in (("清除", self.clear_selected), ("恢复默认", self.restore_selected), ("滚轮上", lambda: self.set_selected_to_mouse_wheel(120)), ("滚轮下", lambda: self.set_selected_to_mouse_wheel(-120)), ("切换预设键", self.set_selected_to_preset_cycle)):
+            ttk.Button(buttons, text=text, command=action, style="Compact.TButton").pack(side="left", padx=(0, 4))
+
+        tk.Frame(right, bg=BORDER, height=1).pack(fill="x", pady=8)
+        tk.Label(right, text="语音输入", bg=CARD, fg=TEXT, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w")
+        tk.Label(right, textvariable=self.voice_shortcut_var, bg=CARD, fg=BLUE_DARK, font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(3, 0))
+        voice = tk.Frame(right, bg=CARD)
+        voice.pack(fill="x", pady=(5, 0))
+        ttk.Checkbutton(voice, text="启用", variable=self.voice_enabled).pack(side="left")
+        tk.Label(voice, text="触发方式", bg=CARD, fg=MUTED).pack(side="left", padx=(8, 4))
+        self.voice_mode_combo = ttk.Combobox(voice, textvariable=self.voice_trigger_mode, values=("按住型", "开关型"), state="readonly", width=7)
+        self.voice_mode_combo.pack(side="left")
+        self.voice_mode_combo.bind("<<ComboboxSelected>>", self._voice_mode_changed)
+        tk.Label(voice, text="增益 dB", bg=CARD, fg=MUTED).pack(side="left", padx=(10, 4))
+        self.compact_gain_entry = ttk.Entry(voice, textvariable=self.gain_db, width=6)
+        self.compact_gain_entry.pack(side="left")
+        ttk.Button(right, text="设置语音快捷键", command=self.edit_voice_shortcut, style="Compact.TButton").pack(anchor="w", pady=(7, 0))
+        tk.Label(right, text="选择语音键后录入组合键；需与 Codex 的听写快捷键一致。", bg=CARD, fg=MUTED, wraplength=480, justify="left", font=("Microsoft YaHei UI", 8)).pack(anchor="w", pady=(5, 0))
+
+        self.preset_area = tk.Frame(footer, bg=BG)
+        self.preset_area.pack(fill="x")
+        tk.Label(self.preset_area, text="快捷预设", bg=BG, fg=TEXT, font=("Microsoft YaHei UI", 9, "bold")).pack(side="left", padx=(0, 8))
+        for preset_id, label, command in (("codex", "Codex", self.apply_codex_preset), ("workbuddy", "WorkBuddy", self.apply_workbuddy_preset), ("wechat", "微信输入", self.apply_wechat_preset), ("qianwen", "千问办公", self.apply_qianwen_preset)):
+            button = ttk.Button(self.preset_area, text=label, command=command, style="Preset.TButton")
+            button.pack(side="left", padx=(0, 4))
+            self.preset_buttons[preset_id] = button
+        custom_button = tk.Menubutton(self.preset_area, text="自定义预设 ▾", relief="flat", bg="#e4eaf3", padx=7, pady=4)
+        self.compact_custom_menu = tk.Menu(custom_button, tearoff=False)
+        custom_button.configure(menu=self.compact_custom_menu)
+        custom_button.pack(side="left", padx=(0, 4))
+        for preset_id, details in self.working_custom_presets.items():
+            self._add_custom_preset_button(preset_id, str(details.get("name", "自定义")))
+        self.add_preset_button = ttk.Button(self.preset_area, text="＋ 自定义", command=self.add_custom_preset, style="Preset.TButton")
+        self.add_preset_button.pack(side="left")
+        actions = tk.Frame(footer, bg=BG)
+        actions.pack(fill="x", pady=(5, 0))
+        tk.Label(actions, textvariable=self.save_status_var, bg=BG, fg=MUTED, font=("Microsoft YaHei UI", 8)).pack(side="left")
+        ttk.Button(actions, text="保存并应用", command=self.save, style="Primary.TButton").pack(side="right")
+        ttk.Button(actions, text="重置", command=self.restore_all, style="Compact.TButton").pack(side="right", padx=(0, 8))
+        self._refresh_preset_styles()
+        self.draw_remote()
+
+    def show_key_settings(self) -> None:
+        if not self.embedded:
+            self.page.yview_moveto(0)
+
+    def show_voice_settings(self) -> None:
+        self.root.after_idle(self.jump_to_voice)
+
+    def edit_voice_shortcut(self) -> None:
+        self.select_button("mic")
+        if not self.embedded:
+            self.page.yview_moveto(0)
 
     def _refresh_preset_styles(self) -> None:
         labels = {
@@ -1769,6 +1871,8 @@ class XiaomiSettingsWindow:
             else []
         )
         shortcut = format_keys(keys) or "未设置"
+        if self.embedded:
+            self.voice_shortcut_var.set(f"语音快捷键：{shortcut}")
         if self.voice_trigger_mode.get() == "按住型":
             behavior = "按住型：按下语音键时持续按住快捷键，松开时释放，适合按住说话类输入法。"
         else:
@@ -1977,6 +2081,9 @@ class XiaomiSettingsWindow:
 
     def _add_custom_preset_button(self, preset_id: str, name: str) -> None:
         if self.preset_area is None or preset_id in self.preset_buttons:
+            return
+        if self.embedded and hasattr(self, "compact_custom_menu"):
+            self.compact_custom_menu.add_command(label=name, command=lambda value=preset_id: self.apply_custom_preset(value))
             return
         button = ttk.Button(
             self.preset_area,

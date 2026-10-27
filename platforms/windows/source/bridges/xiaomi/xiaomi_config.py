@@ -200,6 +200,11 @@ DEFAULT_BUTTON_BINDINGS = {
 }
 
 CODEX_START_COMMAND = (
+    "$p = Get-Process -Name ChatGPT -ErrorAction SilentlyContinue | "
+    "Where-Object { $_.MainWindowHandle -ne 0 -and "
+    "$_.Path -like '*\\WindowsApps\\OpenAI.Codex_*' } | Select-Object -First 1; "
+    "if ($p) { $shell = New-Object -ComObject WScript.Shell; "
+    "if ($shell.AppActivate($p.Id)) { return } }; "
     "$app = Get-StartApps | Where-Object { $_.Name -in @('Codex', 'ChatGPT') } "
     "| Select-Object -First 1; "
     "if ($app) { Start-Process ('shell:AppsFolder\\' + $app.AppID) } "
@@ -244,16 +249,7 @@ def codex_button_bindings() -> dict:
     ]
     bindings["power"] = [
         {
-            "type": "command",
-            "args": [
-                "powershell.exe",
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                CODEX_START_COMMAND,
-            ],
+            "type": "open_codex",
             "label": "打开 Codex",
         }
     ]
@@ -649,6 +645,28 @@ def save_config(config: dict, path: Path = CONFIG_PATH) -> None:
     _write_json(path, config)
 
 
+def _upgrade_legacy_codex_power(bindings: dict) -> None:
+    """Migrate only the two exact launch commands previously shipped by us."""
+    actions = bindings.get("power")
+    if not isinstance(actions, list) or len(actions) != 1:
+        return
+    action = actions[0]
+    if not isinstance(action, dict) or action.get("type") != "command":
+        return
+    if set(action) - {"type", "args", "label"}:
+        return
+    args = action.get("args")
+    if not isinstance(args, list) or len(args) != 7:
+        return
+    if args[:6] != ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"]:
+        return
+    # The original version used only the discovery suffix; the later version
+    # also tried AppActivate. Customized commands must remain untouched.
+    original = CODEX_START_COMMAND[CODEX_START_COMMAND.index("$app = Get-StartApps"):]
+    if args[6] in {original, CODEX_START_COMMAND}:
+        bindings["power"] = [{"type": "open_codex", "label": action.get("label") or "打开 Codex"}]
+
+
 def load_keys_config(path: Path = KEYS_CONFIG_PATH) -> dict:
     config = default_keys_config()
     loaded_schema = MAPPING_SCHEMA_VERSION
@@ -702,6 +720,14 @@ def load_keys_config(path: Path = KEYS_CONFIG_PATH) -> dict:
         for preset in PRESET_ORDER:
             if not isinstance(profiles.get(preset), dict):
                 profiles[preset] = preset_button_bindings(preset)
+    _upgrade_legacy_codex_power(profiles["codex"])
+    try:
+        sibling_path = path.with_name(CONFIG_PATH.name)
+        active = _read_json(sibling_path) if sibling_path.exists() else {"active_preset": "codex"}
+        if isinstance(active, dict) and active.get("active_preset", "codex") == "codex":
+            _upgrade_legacy_codex_power(bindings)
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
     custom_presets = config.get("custom_presets", {})
     if not isinstance(custom_presets, dict):
         custom_presets = {}

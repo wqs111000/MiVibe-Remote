@@ -462,7 +462,10 @@ class XiaomiSpecialKeyHook:
                 )
                 return True
             with self.key_send_lock:
-                if action_type == "command":
+                if action_type == "open_codex":
+                    from bridges.xiaomi.codex_launcher import activate_codex
+                    print(f"XIAOMI CODEX {activate_codex()}", flush=True)
+                elif action_type == "command":
                     arguments = action.get("args", [])
                     if not isinstance(arguments, list) or not arguments:
                         raise ValueError("command action requires a non-empty args list")

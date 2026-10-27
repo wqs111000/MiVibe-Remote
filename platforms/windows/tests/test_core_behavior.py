@@ -182,6 +182,17 @@ class XiaomiCoreBehaviorTests(unittest.TestCase):
         keyboard.send_hotkey.assert_not_called()
         self.assertIn("injection=scan_code", output.call_args_list[-1].args[0])
 
+    def test_open_codex_uses_native_launcher_without_spawning_command(self) -> None:
+        hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(xiaomi_core.XiaomiSpecialKeyHook)
+        hook.button_bindings = {"power": [{"type": "open_codex"}]}
+        hook.key_send_lock = threading.Lock()
+        with mock.patch("bridges.xiaomi.codex_launcher.activate_codex", return_value="focused") as activate, \
+             mock.patch.object(xiaomi_core.subprocess, "Popen") as spawn, \
+             mock.patch("builtins.print"):
+            self.assertTrue(hook._perform_button_action("power"))
+        activate.assert_called_once_with()
+        spawn.assert_not_called()
+
     def test_mouse_wheel_mapping_uses_native_mouse_input(self) -> None:
         hook = xiaomi_core.XiaomiSpecialKeyHook.__new__(
             xiaomi_core.XiaomiSpecialKeyHook

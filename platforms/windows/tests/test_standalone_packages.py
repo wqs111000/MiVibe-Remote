@@ -44,10 +44,10 @@ class StandalonePackageTests(unittest.TestCase):
     def test_xiaomi_host_exposes_environment_check_and_in_app_guide(self) -> None:
         text = (SOURCE / "standalone" / "xiaomi_main.py").read_text(encoding="utf-8")
         self.assertIn("EnvironmentCheckWindow", text)
-        self.assertIn('text="环境检查"', text)
+        self.assertIn('"maintenance", "维护"', text)
         self.assertIn('text="使用教程"', text)
         self.assertIn("def show_guide", text)
-        self.assertIn('self.root.geometry("820x540")', text)
+        self.assertIn('container=self.settings_page', text)
 
     def test_xiaomi_settings_restart_is_confirmed_by_both_windows_hosts(self) -> None:
         settings = (
