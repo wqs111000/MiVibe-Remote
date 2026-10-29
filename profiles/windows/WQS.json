@@ -83,9 +83,10 @@
       {
         "type": "hotkey",
         "keys": [
-          "volume_up"
+          "leftctrl",
+          "["
         ],
-        "injection": "virtual_key"
+        "injection": "scan_code"
       }
     ],
     "home": [
@@ -102,9 +103,10 @@
       {
         "type": "hotkey",
         "keys": [
-          "volume_down"
+          "leftctrl",
+          "]"
         ],
-        "injection": "virtual_key"
+        "injection": "scan_code"
       }
     ],
     "menu": [
@@ -121,10 +123,10 @@
       {
         "type": "hotkey",
         "keys": [
-          "alt",
-          "esc"
+          "leftctrl",
+          "o"
         ],
-        "injection": "virtual_key"
+        "injection": "scan_code"
       }
     ]
   }
