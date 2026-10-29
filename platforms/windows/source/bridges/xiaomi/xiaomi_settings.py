@@ -12,8 +12,9 @@ import os
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, simpledialog, ttk, filedialog
 import uuid
+from pathlib import Path
 
 from PIL import ImageTk
 from standalone.brand_icon import make_icon
@@ -664,6 +665,7 @@ class XiaomiSettingsWindow:
             self.working_custom_presets
         ):
             self.working_preset = "codex"
+        self.working_voice_profiles = copy.deepcopy(self.keys_config.get("preset_voice", {}))
         self.working_profiles = copy.deepcopy(
             self.keys_config.get("preset_bindings", {})
         )
@@ -1281,7 +1283,7 @@ class XiaomiSettingsWindow:
         self.add_preset_button.pack(side="left", padx=(0, 7))
         action_area = tk.Frame(footer, bg=CARD)
         action_area.pack(fill="x", pady=(6, 0))
-        tk.Label(action_area, textvariable=self.save_status_var, bg=CARD, fg=MUTED,
+        tk.Label(action_area, textvariable=self.save_status_var, bg=CARD, fg=MUTED, wraplength=430, justify="left",
                  font=("Microsoft YaHei UI", 8)).pack(side="left")
         if not self.embedded:
             ttk.Button(
@@ -1302,6 +1304,7 @@ class XiaomiSettingsWindow:
             command=self.restore_all,
             style="Quiet.TButton",
         ).pack(side="right", padx=(0, 9))
+        self._profile_menu(action_area)
 
         self._refresh_preset_styles()
         self.draw_remote()
@@ -1385,11 +1388,63 @@ class XiaomiSettingsWindow:
         self.add_preset_button.pack(side="left")
         actions = tk.Frame(footer, bg=BG)
         actions.pack(fill="x", pady=(5, 0))
-        tk.Label(actions, textvariable=self.save_status_var, bg=BG, fg=MUTED, font=("Microsoft YaHei UI", 8)).pack(side="left")
+        tk.Label(actions, textvariable=self.save_status_var, bg=BG, fg=MUTED, wraplength=430, justify="left", font=("Microsoft YaHei UI", 8)).pack(side="left")
         ttk.Button(actions, text="保存并应用", command=self.save, style="Primary.TButton").pack(side="right")
         ttk.Button(actions, text="重置", command=self.restore_all, style="Compact.TButton").pack(side="right", padx=(0, 8))
+        self._profile_menu(actions)
         self._refresh_preset_styles()
         self.draw_remote()
+
+    def _profile_menu(self, parent) -> None:
+        button = tk.Menubutton(parent, text="配置文件 ▾", relief="flat", bg="#e4eaf3", padx=10, pady=6)
+        menu = tk.Menu(button, tearoff=False)
+        menu.add_command(label="导入为自定义预设…", command=self.import_profile)
+        menu.add_command(label="导出当前配置…", command=self.export_profile)
+        button.configure(menu=menu)
+        button.pack(side="right", padx=(0, 8))
+
+    def import_profile(self) -> None:
+        from .portable_profile import validate_profile
+        filename = filedialog.askopenfilename(parent=self.root, title="导入 MiVibe 配置", filetypes=[("MiVibe 配置", "*.json")])
+        if not filename:
+            return
+        try:
+            path = Path(filename)
+            if path.stat().st_size > 256_000:
+                raise ValueError("配置文件过大")
+            profile = validate_profile(json.loads(path.read_text(encoding="utf-8-sig")))
+            self._remember_working_preset()
+            preset_id = f"custom_{uuid.uuid4().hex[:12]}"
+            self.working_custom_presets[preset_id] = {
+                "name": profile["name"], "voice_shortcut_enabled": profile["voice"]["enabled"],
+                "voice_trigger_mode": profile["voice"]["trigger_mode"],
+            }
+            self.working_profiles[preset_id] = profile["button_bindings"]
+            self._add_custom_preset_button(preset_id, profile["name"])
+            self.apply_custom_preset(preset_id)
+            self.working_bindings = copy.deepcopy(profile["button_bindings"])
+            self.select_button(self.selected_id)
+            self.gain_db.set(str(profile["voice"]["gain_db"]))
+            self.save_status_var.set(f"已导入“{profile['name']}”，检查后点击保存并应用")
+        except (OSError, ValueError, TypeError, OverflowError) as exc:
+            messagebox.showerror(APP_NAME, f"导入失败：{exc}", parent=self.root)
+
+    def export_profile(self) -> None:
+        from .portable_profile import validate_profile
+        name = simpledialog.askstring(APP_NAME, "配置名称（如 WQS）：", parent=self.root,
+                                      initialvalue=self.working_custom_presets.get(self.working_preset, {}).get("name", "我的配置"))
+        if name is None:
+            return
+        try:
+            profile = validate_profile({"format": "mivibe-windows-profile", "version": 1, "name": name,
+                "voice": {"enabled": bool(self.voice_enabled.get()), "trigger_mode": self._current_voice_trigger_mode(), "gain_db": self.gain_db.get()},
+                "button_bindings": self.working_bindings})
+            filename = filedialog.asksaveasfilename(parent=self.root, title="导出配置", initialfile="MiVibe-profile.json", defaultextension=".json", filetypes=[("MiVibe 配置", "*.json")])
+            if filename:
+                Path(filename).write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                self.save_status_var.set(f"已导出“{profile['name']}”配置")
+        except (OSError, ValueError, TypeError, OverflowError) as exc:
+            messagebox.showerror(APP_NAME, f"导出失败：{exc}", parent=self.root)
 
     def show_key_settings(self) -> None:
         if not self.embedded:
@@ -2014,6 +2069,7 @@ class XiaomiSettingsWindow:
     def restore_all(self) -> None:
         if not messagebox.askyesno(APP_NAME, "恢复所有按键的默认映射？"):
             return
+        self.working_voice_profiles = {}
         self.working_preset = "codex"
         self.working_bindings = codex_button_bindings()
         self.working_profiles = {
@@ -2037,10 +2093,7 @@ class XiaomiSettingsWindow:
 
     def apply_codex_preset(self) -> None:
         self._switch_preset("codex")
-        self.voice_enabled.set(True)
-        self.voice_trigger_mode.set(
-            "按住型" if CODEX_VOICE_TRIGGER_MODE == "hold" else "开关型"
-        )
+        self._restore_voice_profile("codex", CODEX_VOICE_TRIGGER_MODE)
         self.save_status_var.set("已载入 Codex 预设，点击“保存并应用”后生效")
         self._refresh_preset_styles()
         self.selected_id = "power"
@@ -2048,10 +2101,7 @@ class XiaomiSettingsWindow:
 
     def apply_workbuddy_preset(self) -> None:
         self._switch_preset("workbuddy")
-        self.voice_enabled.set(True)
-        self.voice_trigger_mode.set(
-            "按住型" if WORKBUDDY_VOICE_TRIGGER_MODE == "hold" else "开关型"
-        )
+        self._restore_voice_profile("workbuddy", WORKBUDDY_VOICE_TRIGGER_MODE)
         self.save_status_var.set("已载入 WorkBuddy 预设，点击“保存并应用”后生效")
         self._refresh_preset_styles()
         self.selected_id = "power"
@@ -2059,10 +2109,7 @@ class XiaomiSettingsWindow:
 
     def apply_wechat_preset(self) -> None:
         self._switch_preset("wechat")
-        self.voice_enabled.set(True)
-        self.voice_trigger_mode.set(
-            "按住型" if WECHAT_VOICE_TRIGGER_MODE == "hold" else "开关型"
-        )
+        self._restore_voice_profile("wechat", WECHAT_VOICE_TRIGGER_MODE)
         self.save_status_var.set("已载入微信预设，点击“保存并应用”后生效")
         self._refresh_preset_styles()
         self.selected_id = "power"
@@ -2070,10 +2117,7 @@ class XiaomiSettingsWindow:
 
     def apply_qianwen_preset(self) -> None:
         self._switch_preset("qianwen")
-        self.voice_enabled.set(True)
-        self.voice_trigger_mode.set(
-            "按住型" if QIANWEN_VOICE_TRIGGER_MODE == "hold" else "开关型"
-        )
+        self._restore_voice_profile("qianwen", QIANWEN_VOICE_TRIGGER_MODE)
         self.save_status_var.set("已载入千问办公预设，点击“保存并应用”后生效")
         self._refresh_preset_styles()
         self.selected_id = "power"
@@ -2163,7 +2207,18 @@ class XiaomiSettingsWindow:
     def _current_voice_trigger_mode(self) -> str:
         return "toggle" if self.voice_trigger_mode.get() == "开关型" else "hold"
 
+    def _restore_voice_profile(self, preset: str, default_mode: str) -> None:
+        details = self.working_voice_profiles.get(preset, {})
+        self.voice_enabled.set(bool(details.get("voice_shortcut_enabled", True)))
+        mode = details.get("voice_trigger_mode", default_mode)
+        self.voice_trigger_mode.set("按住型" if mode == "hold" else "开关型")
+
     def _remember_working_preset(self) -> None:
+        self.working_voice_profiles[self.working_preset] = {
+            "voice_hotkey": self._current_voice_hotkey(),
+            "voice_trigger_mode": self._current_voice_trigger_mode(),
+            "voice_shortcut_enabled": bool(self.voice_enabled.get()),
+        }
         self.working_profiles[self.working_preset] = copy.deepcopy(
             self.working_bindings
         )
@@ -2246,6 +2301,7 @@ class XiaomiSettingsWindow:
                     save_preset_button_bindings(
                         self.keys_config, preset, bindings
                     )
+            self.keys_config["preset_voice"] = copy.deepcopy(self.working_voice_profiles)
             self.keys_config["custom_presets"] = copy.deepcopy(
                 self.working_custom_presets
             )

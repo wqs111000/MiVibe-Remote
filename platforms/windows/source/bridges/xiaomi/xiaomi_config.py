@@ -393,6 +393,14 @@ def apply_preset_configuration(
     if preset not in preset_order:
         preset = PRESET_ORDER[0]
     current_preset = str(config.get("active_preset", PRESET_ORDER[0]))
+    voice_settings = keys_config.setdefault("preset_voice", {})
+    if not isinstance(voice_settings, dict):
+        voice_settings = keys_config["preset_voice"] = {}
+    voice_settings[current_preset] = {
+        "voice_hotkey": config.get("voice_hotkey", ""),
+        "voice_trigger_mode": config.get("voice_trigger_mode", "hold"),
+        "voice_shortcut_enabled": config.get("voice_shortcut_enabled", True),
+    }
     current_bindings = keys_config.get("button_bindings", {})
     if current_preset in preset_order and isinstance(current_bindings, dict):
         save_preset_button_bindings(
@@ -439,6 +447,14 @@ def apply_preset_configuration(
     else:
         voice_hotkey, voice_trigger_mode = voice_profiles[preset]
         voice_shortcut_enabled = True
+        saved_voice = voice_settings.get(preset, {})
+        if isinstance(saved_voice, dict) and saved_voice:
+            voice_hotkey = tuple(hotkey_tokens(saved_voice.get("voice_hotkey", voice_hotkey)))
+            voice_trigger_mode = saved_voice.get("voice_trigger_mode", voice_trigger_mode)
+            voice_shortcut_enabled = bool(saved_voice.get("voice_shortcut_enabled", True))
+        mic_actions = bindings.get("mic", [])
+        if isinstance(mic_actions, list) and mic_actions and mic_actions[0].get("type") == "hotkey":
+            voice_hotkey = tuple(hotkey_tokens(mic_actions[0].get("keys", voice_hotkey)))
     config["active_preset"] = preset
     config["voice_shortcut_enabled"] = voice_shortcut_enabled
     config["voice_hotkey"] = "+".join(voice_hotkey)

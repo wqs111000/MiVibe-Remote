@@ -419,5 +419,22 @@ class XiaomiConfigTests(unittest.TestCase):
         )
 
 
+class VoicePresetPersistenceTests(unittest.TestCase):
+    def test_custom_codex_shortcut_and_mode_survive_cycle_and_reload(self):
+        config = xiaomi_config.default_config()
+        keys = xiaomi_config.default_keys_config()
+        config.update(voice_hotkey="ctrl+shift+f9", voice_trigger_mode="toggle", voice_shortcut_enabled=False)
+        keys["button_bindings"]["mic"] = [{"type": "hotkey", "keys": ["ctrl", "shift", "f9"]}]
+        xiaomi_config.apply_preset_configuration(config, keys, "wechat")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "xiaomi_keys.json"
+            xiaomi_config.save_keys_config(keys, path)
+            keys = xiaomi_config.load_keys_config(path)
+        xiaomi_config.apply_preset_configuration(config, keys, "codex")
+        self.assertEqual(config["voice_hotkey"], "ctrl+shift+f9")
+        self.assertEqual(config["voice_trigger_mode"], "toggle")
+        self.assertFalse(config["voice_shortcut_enabled"])
+
+
 if __name__ == "__main__":
     unittest.main()

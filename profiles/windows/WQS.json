@@ -1,0 +1,131 @@
+{
+  "format": "mivibe-windows-profile",
+  "version": 1,
+  "name": "WQS",
+  "voice": {
+    "enabled": true,
+    "trigger_mode": "hold",
+    "gain_db": 10.0
+  },
+  "button_bindings": {
+    "power": [
+      {
+        "type": "open_codex"
+      }
+    ],
+    "mic": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "ctrl",
+          "shift",
+          "f9"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "up": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "up"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "left": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "left"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "ok": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "enter"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "right": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "right"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "down": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "down"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "back": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "backspace"
+        ],
+        "injection": "virtual_key",
+        "hold_ms": 20
+      }
+    ],
+    "volume_up": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "volume_up"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "home": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "leftwin",
+          "d"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "volume_down": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "volume_down"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "menu": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "leftwin",
+          "tab"
+        ],
+        "injection": "virtual_key"
+      }
+    ],
+    "tv": [
+      {
+        "type": "hotkey",
+        "keys": [
+          "alt",
+          "esc"
+        ],
+        "injection": "virtual_key"
+      }
+    ]
+  }
+}

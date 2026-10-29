@@ -16,6 +16,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 import traceback
+import uuid
 
 
 APP_NAME = "MiVibe Remote"
@@ -43,6 +44,8 @@ from runtime_launcher import role_command
 from bridges.xiaomi.xiaomi_config import APPDATA, CONFIG_PATH, load_config
 from standalone.environment_check import (
     EnvironmentCheckWindow, _read_recent_log, run_environment_check, voice_bridge_is_ready,
+    voice_session_feedback,
+    BridgeLogReader,
 )
 from standalone.windows_update import MainThreadShutdownBridge, WinSparkleUpdater
 from standalone.brand_icon import make_icon
@@ -84,22 +87,27 @@ class XiaomiWorkers:
         self.audio: subprocess.Popen | None = None
         self.bridge: subprocess.Popen | None = None
         self._lock = threading.RLock()
+        self.bridge_log_marker = ""
 
-    @staticmethod
-    def _spawn(role: str, arguments: list[str], log_path: Path) -> subprocess.Popen:
+    def _spawn(self, role: str, arguments: list[str], log_path: Path) -> subprocess.Popen:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         stream = log_path.open("a", encoding="utf-8")
+        if role == "xiaomi-worker":
+            self.bridge_log_marker = f"--- host bridge generation {uuid.uuid4().hex} ---"
+            stream.write(self.bridge_log_marker + "\n")
+            stream.flush()
         child_environment = os.environ.copy()
         child_environment["PYTHONUTF8"] = "1"
         child_environment["PYTHONIOENCODING"] = "utf-8"
-        return subprocess.Popen(
-            role_command(role, arguments, unbuffered=True),
-            cwd=str(Path(sys.executable).resolve().parent),
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-            env=child_environment,
-            creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
-        )
+        try:
+            return subprocess.Popen(
+                role_command(role, arguments, unbuffered=True),
+                cwd=str(Path(sys.executable).resolve().parent),
+                stdout=stream, stderr=subprocess.STDOUT, env=child_environment,
+                creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        finally:
+            stream.close()
 
     @staticmethod
     def _stop(process: subprocess.Popen | None) -> None:
@@ -191,6 +199,7 @@ class XiaomiWorkers:
             "audio_alive": audio_alive,
             "bridge_code": bridge_code,
             "audio_code": audio_code,
+            "bridge_log_marker": self.bridge_log_marker,
         }
 
 
@@ -219,6 +228,8 @@ class XiaomiApp:
         self._settings_panel = None
         self._current_page = "home"
         self._maintenance_running = False
+        self._bridge_log_reader = BridgeLogReader()
+        self._restart_running = False
         self.updater = WinSparkleUpdater(
             APP_NAME,
             APP_VERSION,
@@ -258,7 +269,7 @@ class XiaomiApp:
         tk.Label(sidebar, text="MiVibe", bg=navy, fg="white", font=("Microsoft YaHei UI", 17, "bold")).pack(anchor="w", padx=8)
         tk.Label(sidebar, text="遥控器控制台", bg=navy, fg="#aebfd8", font=("Microsoft YaHei UI", 9)).pack(anchor="w", padx=8, pady=(3, 22))
         self.nav_buttons = {}
-        for key, label in (("home", "首页"), ("keys", "设置"), ("maintenance", "维护")):
+        for key, label in (("home", "首页"), ("keys", "设置"), ("maintenance", "维护"), ("logs", "日志")):
             button = tk.Button(sidebar, text=label, command=lambda page=key: self._navigate(page), anchor="w", relief="flat", bg=navy, fg="#d2def1", activebackground="#304b71", activeforeground="white", font=("Microsoft YaHei UI", 10, "bold"), padx=14, pady=10, cursor="hand2")
             button.pack(fill="x", pady=3)
             self.nav_buttons[key] = button
@@ -268,6 +279,7 @@ class XiaomiApp:
         self.home_page = tk.Frame(self.page_area, bg=bg)
         self.settings_page = tk.Frame(self.page_area, bg=bg)
         self.maintenance_page = tk.Frame(self.page_area, bg=bg)
+        self.logs_page = None
         self.home_page.pack(fill="both", expand=True)
         self.nav_buttons["home"].configure(bg="#2a466d", fg="white")
         header = tk.Frame(self.home_page, bg=navy, padx=28, pady=18)
@@ -293,7 +305,13 @@ class XiaomiApp:
         flow = tk.Frame(content, bg="#eaf1ff", highlightbackground="#d3e1fc", highlightthickness=1, padx=20, pady=12)
         flow.pack(fill="x", pady=(12, 0))
         tk.Label(flow, text="开始语音输入", bg="#eaf1ff", fg=ink, font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w")
-        tk.Label(flow, text="将光标放进输入框  →  使用遥控器语音键说话  →  检查文字", bg="#eaf1ff", fg="#405a7b", wraplength=680, justify="left", font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(4, 0))
+        steps = tk.Frame(flow, bg="#eaf1ff")
+        steps.pack(fill="x", pady=(10, 6))
+        for number, title, hint in (("01", "选择输入框", "点击要输入文字的位置"), ("02", "按住语音键", "边按边说，说完松开"), ("03", "检查文字", "没有响应时查看日志")):
+            step = tk.Frame(steps, bg="white", padx=12, pady=10)
+            step.pack(side="left", fill="both", expand=True, padx=(0, 8))
+            tk.Label(step, text=f"{number}  {title}", bg="white", fg="#234b88", font=("Microsoft YaHei UI", 10, "bold")).pack(anchor="w")
+            tk.Label(step, text=hint, bg="white", fg="#65758c", font=("Microsoft YaHei UI", 8)).pack(anchor="w", pady=(5, 0))
         tk.Label(flow, textvariable=self.config_var, bg="#eaf1ff", fg="#32588c", wraplength=680, justify="left", font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(6, 0))
 
         actions = tk.Frame(content, bg=bg)
@@ -312,8 +330,14 @@ class XiaomiApp:
         tk.Button(footer, text="退出程序", command=self.exit, relief="flat", bg=bg, fg="#9e4350", activebackground="#fcecef", padx=10, pady=4, cursor="hand2").pack(side="right")
 
     def _navigate(self, name: str) -> None:
-        if name not in {"home", "keys", "maintenance"}:
+        if name not in {"home", "keys", "maintenance", "logs"}:
             return
+        if name == "logs" and self.logs_page is None:
+            from standalone.log_view import LogPanel
+            self.logs_page = LogPanel(self.page_area, LOG_DIR)
+        if self.logs_page is not None:
+            self.logs_page.stop()
+            self.logs_page.pack_forget()
         if name == "keys" and self._settings_panel is None:
             from bridges.xiaomi.xiaomi_settings import XiaomiSettingsWindow
             self._settings_panel = XiaomiSettingsWindow(
@@ -322,7 +346,7 @@ class XiaomiApp:
         for frame in (self.home_page, self.settings_page, self.maintenance_page):
             frame.pack_forget()
         target = {"home": self.home_page, "keys": self.settings_page,
-                  "maintenance": self.maintenance_page}[name]
+                  "maintenance": self.maintenance_page, "logs": self.logs_page}[name]
         target.pack(fill="both", expand=True)
         self._current_page = name
         for key, button in self.nav_buttons.items():
@@ -331,6 +355,8 @@ class XiaomiApp:
             self._settings_panel.show_key_settings()
         elif name == "maintenance":
             self._refresh_maintenance()
+        elif name == "logs":
+            self.logs_page.start()
 
     def _build_maintenance(self) -> None:
         page = self.maintenance_page
@@ -386,7 +412,8 @@ class XiaomiApp:
             pystray.MenuItem("按键与语音设置", lambda *_: self.root.after(0, self.open_settings)),
             pystray.MenuItem("环境检查", lambda *_: self.root.after(0, self.show_environment_check)),
             pystray.MenuItem("使用教程", lambda *_: self.root.after(0, self.show_guide)),
-            pystray.MenuItem("重启桥接", lambda *_: self.root.after(0, self.workers.restart_bridge)),
+            pystray.MenuItem("日志与诊断", lambda *_: self.root.after(0, self.open_logs)),
+            pystray.MenuItem("重启连接", lambda *_: self.root.after(0, self.restart_workers)),
             pystray.MenuItem(
                 "关于 MiVibe Remote",
                 lambda *_: self.root.after(0, self.show_about),
@@ -482,29 +509,39 @@ class XiaomiApp:
         self._navigate("keys")
 
     def _collect_environment_check(self):
+        status = self.workers.status()
+        status["bridge_log"] = self._bridge_log_reader.read(LOG_DIR / "bridge.log", status)
         return run_environment_check(
             app_dir=Path(sys.executable).resolve().parent,
             config_path=CONFIG_PATH,
             log_dir=LOG_DIR,
-            worker_status=self.workers.status(),
+            worker_status=status,
         )
 
     def show_environment_check(self) -> None:
         self.show()
         self._navigate("maintenance")
 
-    @staticmethod
-    def open_logs() -> None:
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.Popen(["explorer", str(LOG_DIR)])
+    def open_logs(self) -> None:
+        self.show()
+        self._navigate("logs")
 
     def restart_workers(self) -> None:
-        try:
-            self.workers.start()
-        except Exception as exc:
-            log(f"worker restart failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
-            self.status_var.set("后台桥接启动失败")
-            self.detail_var.set("主窗口会继续保留。点击“打开日志”查看具体错误。")
+        if self._restart_running:
+            return
+        self._restart_running = True
+        self._restart_error = ""
+        self.status_var.set("正在重启连接…")
+        self.detail_var.set("正在重新连接遥控器与音频服务，请稍候。")
+        def reconnect():
+            try:
+                self.workers.start()
+            except Exception as exc:
+                self._restart_error = str(exc)
+                log(f"worker restart failed: {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+            finally:
+                self._restart_running = False
+        threading.Thread(target=reconnect, daemon=True).start()
 
     def _start_updater(self) -> None:
         self.updater.initialize()
@@ -741,11 +778,18 @@ class XiaomiApp:
         ):
             return
 
+        if self._restart_running:
+            self.root.after(250, self._poll)
+            return
         status = self.workers.status()
-        if voice_bridge_is_ready(_read_recent_log(LOG_DIR / "bridge.log"), status):
-            text = "遥控器语音链路已就绪"
-            detail = "按住语音键测试实际听写；首次完整按键接管可能出现一次 Windows 管理员确认。"
-            color = "#2fa84f"
+        bridge_log = self._bridge_log_reader.read(LOG_DIR / "bridge.log", status)
+        if getattr(self, "_restart_error", ""):
+            text = "重连失败，请查看日志"
+            detail = str(self._restart_error)
+            color = "#d94141"
+        elif voice_bridge_is_ready(bridge_log, status):
+            text, detail = voice_session_feedback(bridge_log, status)
+            color = "#2fa84f" if text == "已收到遥控器声音" else "#d99500"
         elif status["bridge_alive"] and status["audio_alive"]:
             text = "正在连接遥控器语音"
             detail = "后台进程已启动，等待语音链路就绪；如持续等待，请查看日志。"

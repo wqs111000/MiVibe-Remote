@@ -56,8 +56,32 @@ class IntegratedNavigationTests(unittest.TestCase):
                 self.assertIs(panel, app._settings_panel)
                 self.assertEqual(panel.gain_db.get(), "12.5")
                 self.assertEqual(len([w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]), 0)
+                panel.voice_enabled.set(False)
+                panel.voice_trigger_mode.set("开关型")
+                panel.apply_wechat_preset()
+                panel.apply_codex_preset()
+                self.assertFalse(panel.voice_enabled.get())
+                self.assertEqual(panel.voice_trigger_mode.get(), "开关型")
                 panel.save()
                 self.assertEqual(save_config.call_args.args[0]["gain_db"], 12.5)
+                with patch("standalone.log_view.display_log", return_value="MIC ON test"):
+                    app._navigate("logs")
+                    root.update()
+                    self.assertEqual(app.logs_page.text.get("1.0", "end-1c"), "MIC ON test")
+                    app._navigate("keys")
+                    self.assertIsNone(app.logs_page._timer)
+                    self.assertIs(panel, app._settings_panel)
+                address = panel.config.get("address")
+                wqs = Path(__file__).resolve().parents[3] / "profiles/windows/WQS.json"
+                with patch("bridges.xiaomi.xiaomi_settings.filedialog.askopenfilename", return_value=str(wqs)):
+                    panel.import_profile()
+                self.assertEqual(panel.config.get("address"), address)
+                self.assertEqual(panel.working_custom_presets[panel.working_preset]["name"], "WQS")
+                self.assertEqual(panel._current_voice_hotkey(), "ctrl+shift+f9")
+                self.assertEqual(panel.voice_trigger_mode.get(), "按住型")
+                self.assertEqual(panel.working_bindings["menu"][0]["keys"], ["leftwin", "tab"])
+                panel.save()
+                self.assertEqual(save_config.call_args.args[0]["active_preset"], panel.working_preset)
             finally:
                 root.destroy()
 

@@ -12,9 +12,11 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 from typing import Callable, Iterable, Mapping
 import threading
 import tkinter as tk
+from collections import deque
 
 
 @dataclass(frozen=True)
@@ -56,12 +58,80 @@ def _read_recent_log(path: Path, limit: int = 256_000) -> str:
         return ""
 
 
+class BridgeLogReader:
+    """Keep session transitions even when noisy HID logs exceed the viewer tail."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._marker = ""
+        self._offset = 0
+        self._partial = b""
+        self._events = deque(maxlen=20)
+        self._connection = ""
+        self._found = False
+
+    def read(self, path: Path, status: Mapping[str, object]) -> str:
+        marker = str(status.get("bridge_log_marker", ""))
+        if not marker:
+            return _read_recent_log(path)
+        with self._lock:
+            try:
+                if marker != self._marker or path.stat().st_size < self._offset:
+                    self._marker, self._offset, self._partial = marker, 0, b""
+                    self._events.clear()
+                    self._connection = ""
+                    self._found = False
+                with path.open("rb") as stream:
+                    stream.seek(self._offset)
+                    while chunk := stream.read(65536):
+                        self._offset += len(chunk)
+                        lines = (self._partial + chunk).split(b"\n")
+                        self._partial = lines.pop()
+                        for raw in lines:
+                            line = raw.decode("utf-8", errors="replace").strip()
+                            if marker in line:
+                                self._found = True
+                                self._events.clear()
+                                self._connection = ""
+                            elif self._found and any(token in line for token in (
+                                "READY remote=", "CONNECTING remote=", "BRIDGE ERROR", "VOICE BRIDGE WAITING",
+                            )):
+                                self._connection = line
+                                self._events.clear()
+                            elif self._found and any(token in line for token in ("MIC ON", "MIC OFF", "CONNECTED remote=", "XIAOMI HID TAP READY")):
+                                self._events.append(line)
+            except OSError:
+                return ""
+            return marker + "\n" + self._connection + "\n" + "\n".join(self._events) if self._found else ""
+
+
+def current_bridge_log(log: str, worker_status: Mapping[str, object]) -> str:
+    marker = str(worker_status.get("bridge_log_marker", ""))
+    if marker:
+        return log.split(marker, 1)[1] if marker in log else ""
+    # Older hosts have no generation marker. Never reuse an earlier run.
+    return log[log.rfind("--- bridge start "):] if "--- bridge start " in log else log
+
+
 def voice_bridge_is_ready(log: str, worker_status: Mapping[str, object]) -> bool:
     if not (worker_status.get("bridge_alive") and worker_status.get("audio_alive")):
         return False
+    log = current_bridge_log(log, worker_status)
     ready_position = log.rfind("READY remote=")
     last_failure = max(log.rfind("BRIDGE ERROR"), log.rfind("VOICE BRIDGE WAITING"), log.rfind("CONNECTING remote="))
     return ready_position >= 0 and ready_position > last_failure
+
+
+def voice_session_feedback(log: str, worker_status: Mapping[str, object]) -> tuple[str, str]:
+    """Report measured remote audio, without claiming target-app transcription."""
+    log = current_bridge_log(log, worker_status)
+    if log.rfind("MIC ON") > log.rfind("MIC OFF"):
+        return "正在接收遥控器录音", "说完松开语音键，再检查输入框中的文字。"
+    sessions = re.findall(r"MIC OFF[^\n]*result=([a-z_]+)", log)
+    if sessions:
+        if sessions[-1] == "signal":
+            return "已收到遥控器声音", "若没有文字，请检查目标软件的语音快捷键和输入设备 CABLE Output。"
+        return "上次录音未收到有效声音", "请按住语音键说话；若仍无声音，再检查遥控器和音频路由。"
+    return "语音通道已连接，等待按键测试", "请按住语音键说话。若没有弹出听写界面，先用键盘测试相同快捷键。"
 
 
 def evaluate_environment(
@@ -141,7 +211,8 @@ def evaluate_environment(
         action="重新安装完整的 MiVibe Remote 安装包。" if not script_ready else "",
     ))
 
-    bridge_log = _read_recent_log(log_dir / "bridge.log")
+    raw_bridge_log = str(worker_status.get("bridge_log", _read_recent_log(log_dir / "bridge.log")))
+    bridge_log = current_bridge_log(raw_bridge_log, worker_status)
     remote_ready = any(marker in bridge_log for marker in (
         "READY remote=",
         "CONNECTED remote=",
@@ -158,13 +229,21 @@ def evaluate_environment(
 
     # Connection or HID-tap activity alone does not mean that microphone
     # streaming is ready. Only a later READY after a failure is useful here.
-    voice_ready = voice_bridge_is_ready(bridge_log, worker_status)
+    voice_ready = voice_bridge_is_ready(raw_bridge_log, worker_status)
     results.append(EnvironmentCheckItem(
         key="voice_bridge",
         title="遥控器语音链路",
         status="pass" if voice_ready else "warn",
         detail="语音通道和音频路由已就绪；仍需按住语音键验证录音" if voice_ready else "尚未确认语音通道与音频路由同时就绪",
-        action="先修复 VB-CABLE 并重启桥接，再按住语音键进行真实录音测试。" if not voice_ready else "",
+        action=("点击“重启连接”，然后按住语音键测试；驱动缺失时再安装/修复驱动。" if not voice_ready else ""),
+    ))
+
+    audio_title, audio_detail = voice_session_feedback(raw_bridge_log, worker_status)
+    results.append(EnvironmentCheckItem(
+        key="voice_test", title="实际录音测试",
+        status="pass" if voice_ready and audio_title == "已收到遥控器声音" else "warn",
+        detail=audio_title if voice_ready else "连接成功后，请按住语音键说一句话",
+        action=audio_detail if voice_ready else "先完成遥控器连接，再测试录音。",
     ))
 
     return results
