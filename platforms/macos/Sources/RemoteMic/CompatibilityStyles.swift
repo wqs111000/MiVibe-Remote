@@ -13,7 +13,9 @@ struct AdaptiveGlassEffectContainer<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            content
+        } else if #available(macOS 26.0, *) {
             GlassEffectContainer(spacing: spacing) {
                 content
             }
@@ -35,7 +37,9 @@ extension View {
 
     @ViewBuilder
     func adaptiveGlassButtonStyle() -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            buttonStyle(.bordered)
+        } else if #available(macOS 26.0, *) {
             buttonStyle(.glass)
         } else {
             buttonStyle(.bordered)
@@ -44,7 +48,9 @@ extension View {
 
     @ViewBuilder
     func adaptiveProminentGlassButtonStyle() -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            buttonStyle(.borderedProminent)
+        } else if #available(macOS 26.0, *) {
             buttonStyle(.glassProminent)
         } else {
             buttonStyle(.borderedProminent)
@@ -54,7 +60,10 @@ extension View {
     @ViewBuilder
     func adaptiveRegularGlassRounded(cornerRadius: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            background(.regularMaterial, in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
             glassEffect(.regular, in: shape)
         } else {
             background(.regularMaterial, in: shape)
@@ -69,7 +78,10 @@ extension View {
         interactive: Bool = false
     ) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            background(tint, in: shape)
+                .overlay(shape.stroke(tint.opacity(0.55), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
             if interactive {
                 glassEffect(.clear.tint(tint).interactive(), in: shape)
             } else {
@@ -83,7 +95,10 @@ extension View {
 
     @ViewBuilder
     func adaptiveTintedGlassCircle(_ tint: Color) -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            background(tint, in: Circle())
+                .overlay(Circle().stroke(tint.opacity(0.55), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
             glassEffect(.clear.tint(tint), in: Circle())
         } else {
             background(tint, in: Circle())
@@ -93,7 +108,10 @@ extension View {
 
     @ViewBuilder
     func adaptiveTintedGlassCapsule(_ tint: Color) -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 27.0, *) {
+            background(tint, in: Capsule())
+                .overlay(Capsule().stroke(tint.opacity(0.55), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
             glassEffect(.clear.tint(tint), in: Capsule())
         } else {
             background(tint, in: Capsule())

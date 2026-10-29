@@ -1,0 +1,49 @@
+{
+  "format": "mivibe-macos-profile",
+  "version": 1,
+  "name": "WQS",
+  "voiceShortcutProfile": "codex",
+  "customVoiceShortcut": {
+    "keyCode": 2,
+    "keyLabel": "D",
+    "modifierFlagsRawValue": 393216
+  },
+  "customVoiceTriggerMode": "hold",
+  "buttonBindings": {
+    "tv": "customShortcut",
+    "back": "deleteBackward",
+    "volume_down": "customShortcut",
+    "left": "arrowLeft",
+    "home": "showDesktop",
+    "volume_up": "customShortcut",
+    "up": "arrowUp",
+    "power": "openCodex",
+    "menu": "appSwitcher",
+    "down": "arrowDown",
+    "right": "arrowRight",
+    "ok": "returnKey"
+  },
+  "buttonShortcuts": {
+    "menu": {
+      "keyLabel": "↑",
+      "keyCode": 126,
+      "modifierFlagsRawValue": 8650752
+    },
+    "tv": {
+      "keyLabel": "N",
+      "keyCode": 45,
+      "modifierFlagsRawValue": 1048576
+    },
+    "volume_down": {
+      "keyLabel": "]",
+      "keyCode": 30,
+      "modifierFlagsRawValue": 1048576
+    },
+    "volume_up": {
+      "keyLabel": "[",
+      "keyCode": 33,
+      "modifierFlagsRawValue": 1048576
+    }
+  },
+  "secondaryButtonBindings": {}
+}

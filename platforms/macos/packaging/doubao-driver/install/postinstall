@@ -30,8 +30,17 @@ test "$SYSTEM_MAJOR" -ge 15
 /usr/bin/codesign --verify --deep --strict "$DESTINATION"
 /usr/sbin/chown -R root:wheel "$APP_DESTINATION"
 /usr/bin/find "$APP_DESTINATION" -type d -exec /bin/chmod 755 {} \;
-/usr/bin/find "$APP_DESTINATION" -type f -exec /bin/chmod 644 {} \;
-/bin/chmod 755 "$APP_BINARY"
+# Preserve executable bits on Sparkle's framework and helper processes.
+/usr/bin/find "$APP_DESTINATION" -type f -exec /bin/chmod u=rwX,go=rX {} \;
+for executable in \
+  "$APP_BINARY" \
+  "$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" \
+  "$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" \
+  "$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater" \
+  "$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
+  "$APP_DESTINATION/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"; do
+  test -x "$executable"
+done
 /usr/bin/codesign --verify --deep --strict "$APP_DESTINATION"
 
 DRIVER_ARCHS="$(/usr/bin/lipo -archs "$BINARY")"

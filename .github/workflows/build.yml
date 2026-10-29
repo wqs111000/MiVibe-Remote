@@ -76,6 +76,8 @@ jobs:
           xcodebuild -version
       - name: Run Swift tests
         run: swift test
+      - name: Test macOS profile import and installer permissions
+        run: python3 -m unittest discover -s ../../profiles/macos/tests -v
       - name: Build and verify DMG
         run: |
           ./scripts/build-dmg.sh
