@@ -115,6 +115,18 @@ final class AppSettings: ObservableObject {
 
     private let defaults: UserDefaults
 
+    /// Publish once after a preset's related properties have finished changing.
+    /// @Published emits before assignment, so hardware must refresh on a later turn.
+    var hidConfigurationChanges: AnyPublisher<Void, Never> {
+        Publishers.CombineLatest3(
+            $customMappingEnabled, $buttonBindings, $secondaryButtonBindings
+        )
+        .dropFirst()
+        .debounce(for: .milliseconds(20), scheduler: DispatchQueue.main)
+        .map { _ in () }
+        .eraseToAnyPublisher()
+    }
+
     @Published var gainDB: Double {
         didSet { defaults.set(gainDB, forKey: Keys.gainDB) }
     }

@@ -173,7 +173,7 @@ struct SettingsView: View {
                 sidebarButton(section)
             }
             Spacer(minLength: 0)
-            sidebarButton(.about, subtitle: "起司制作")
+            sidebarButton(.about, subtitle: "应用信息")
             Divider()
             Button {
                 NSApp.terminate(nil)
@@ -548,7 +548,6 @@ struct SettingsView: View {
                 get: { settings.customMappingEnabled },
                 set: { enabled in
                     settings.customMappingEnabled = enabled
-                    model.applyHIDSettings()
                 }
             ))
             Text(model.hidStatus)

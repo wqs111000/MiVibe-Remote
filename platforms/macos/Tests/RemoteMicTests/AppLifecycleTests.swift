@@ -55,7 +55,7 @@ struct AppLifecycleTests {
         #expect(settingsSource.contains("matching: [.keyDown, .flagsChanged]"))
         #expect(settingsSource.contains("也可以单独录入"))
         #expect(!settingsSource.contains("Label(\"保存为新预设\""))
-        #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"起司制作\")"))
+        #expect(settingsSource.contains("sidebarButton(.about, subtitle: \"应用信息\")"))
         #expect(settingsSource.contains("publisher(for: .showRemoteMicAbout)"))
         #expect(appSource.contains("NotificationCenter.default.post(name: .showRemoteMicAbout"))
         #expect(!appSource.contains("orderFrontStandardAboutPanel"))

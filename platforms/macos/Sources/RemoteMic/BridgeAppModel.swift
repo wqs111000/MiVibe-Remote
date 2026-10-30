@@ -118,6 +118,12 @@ final class BridgeAppModel: ObservableObject, XiaomiBluetoothBridgeDelegate {
                 self.voiceShortcutStatus = self.settings.voiceShortcutConfiguration.readyStatus
             }
             .store(in: &cancellables)
+        settings.hidConfigurationChanges
+            .sink { [weak self] in
+                guard let self, self.started else { return }
+                self.applyHIDSettings()
+            }
+            .store(in: &cancellables)
         audioOutput.onConfigurationChange = { [weak self] in
             self?.scheduleAudioRecovery(reason: "engine_configuration_change")
         }
