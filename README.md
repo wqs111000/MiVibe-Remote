@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/wyuzhi/MiVibe-Remote/releases/latest">下载安装包</a>
+  <a href="https://github.com/wqs111000/MiVibe-Remote/releases">个人仓库发布</a>
   ·
   <a href="docs/codex-setup.md">Codex 设置</a>
   ·
@@ -33,16 +33,15 @@ MiVibe Remote 复用遥控器内置麦克风和实体按键，让你不必一直
 
 macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及返回键、音量键的长按重复。
 
-## 下载
+## 下载与版本来源
 
-前往 [GitHub Releases](https://github.com/wyuzhi/MiVibe-Remote/releases/latest) 下载：
+**个人仓库目前没有已发布的安装包。** 当前源码包含 2026-10-30 的 macOS 配置迁移、安装兼容性与 HID 映射刷新改动；不要把上游安装包当作包含这些改动的个人构建。源码版本号分别为 macOS 0.1.15（build 16）和 Windows 构建配置 0.1.21；版本号本身不能证明安装包来源。
 
-- macOS：`MiVibe-Remote-0.1.15.dmg`
-- Windows：`MiVibeRemoteSetup-0.1.19.exe`
-- 每个安装包旁边都有对应的 `.sha256` 校验文件
+- [个人仓库 Releases](https://github.com/wqs111000/MiVibe-Remote/releases)：发布候选包后以该页面的源码提交、校验文件和说明为准；目前没有可下载的个人安装包。
+- [上游 v0.1.22 Release](https://github.com/wyuzhi/MiVibe-Remote/releases/tag/v0.1.22)：macOS `MiVibe-Remote-0.1.14.dmg`、Windows `MiVibeRemoteSetup-0.1.20.exe`，以及各自的 `.sha256` 文件。这些是上游版本，**不包含本仓库 10 月 30 日的修复**。
+- [个人仓库 Actions](https://github.com/wqs111000/MiVibe-Remote/actions/workflows/build.yml)：若启用 Actions 并完成构建，可从对应成功运行的 Artifacts 下载候选包。下载前核对运行的 commit SHA、平台任务及校验文件；Actions 产物可能过期，需要登录 GitHub。
 
-> 当前 macOS 首发包使用 ad-hoc 签名，尚未进行 Apple 公证。请只安装本仓库 Release
-> 发布的文件。Windows 首发包同样是未进行商业代码签名的候选版本。
+macOS 候选包为 ad-hoc 签名、未公证；Windows 候选包未商业签名。安装前应核对 SHA-256，并在目标设备上验证权限、驱动、配对、按键及语音功能。
 
 ## 支持的硬件
 
@@ -56,7 +55,7 @@ macOS 还支持单击、双击和长按动作；Windows 支持普通单击以及
 
 要求：Apple Silicon Mac、macOS 15 或更高版本。
 
-1. 下载并打开 `MiVibe-Remote-0.1.15.dmg`。
+1. 下载并打开所选来源的 macOS DMG（上游为 `MiVibe-Remote-0.1.14.dmg`）。
 2. 双击“安装 MiVibe Remote.pkg”。
 3. 按系统提示输入管理员密码；安装器会同时安装应用和 `MiRemoteV 2ch` 虚拟麦克风。
 4. 首次启动后，在“权限”页面依次允许蓝牙、麦克风、输入监控和辅助功能。
@@ -81,7 +80,7 @@ MiVibe Remote 会自动选择正确的虚拟麦克风。正常使用不需要理
 
 要求：Windows 10/11，首次安装需要联网。
 
-1. 下载并运行 `MiVibeRemoteSetup-0.1.19.exe`。
+1. 下载并运行所选来源的 Windows 安装包（上游为 `MiVibeRemoteSetup-0.1.20.exe`）。
 2. 打开 MiVibe Remote；没有安装语音驱动时，普通按键和设置窗口仍然可以使用。
 3. 先点击主界面的“环境检查”，确认缺少的具体项目；再点击“安装/修复语音驱动”。程序会校验下载文件并打开 VB-Audio 官方安装程序。
 4. 在官方窗口点击 `Install`，然后重启 Windows。
@@ -175,12 +174,14 @@ Windows 请在 Windows PowerShell 中运行：
 ```powershell
 cd platforms/windows
 .\delivery\build-standalone-packages.ps1 `
-  -Version 0.1.19 `
+  -Version 0.1.21 `
   -Product xiaomi `
   -AllowUnsignedCandidate
 ```
 
-根目录的 GitHub Actions 会在原生 macOS 和 Windows runner 上测试并构建两个安装包。
+GitHub Actions 的 Build MiVibe Remote 工作流配置了原生 macOS 与 Windows 测试和打包；工作流存在不等于构建已经成功。Fork 可能需要在 Actions 页面先启用工作流，再手动运行 main 分支并核对实际 commit。macOS 产物位于 `platforms/macos/dist/`，Windows 产物位于 `platforms/windows/delivery/out/standalone/`。每个候选包都应保留同目录的 SHA-256 文件。macOS 在产物目录执行 `shasum -a 256 -c 文件名.dmg.sha256`；Windows 使用 `Get-FileHash .\安装包.exe -Algorithm SHA256` 并与对应校验文件比较。
+
+发布前应检查两个任务均成功、下载产物并重新校验哈希，在 Release 中写明完整源码 commit、各平台版本与签名状态，并完成真机验证。切勿将上游资产重新标记为个人构建。
 
 ## 许可证
 
