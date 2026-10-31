@@ -83,7 +83,6 @@ jobs:
           ./scripts/build-dmg.sh
           ./scripts/verify-dmg.sh
       - name: Upload macOS candidate
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MiVibe-Remote-macOS
@@ -171,7 +170,6 @@ jobs:
           -Product xiaomi
           -AllowUnsignedCandidate
       - name: Upload Windows candidate
-        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: MiVibe-Remote-Windows
